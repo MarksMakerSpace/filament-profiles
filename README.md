@@ -12,6 +12,8 @@ Please report any bugs [here](https://github.com/MarksMakerSpace/filament-profil
 
 And add any ideas for features you would like to see [here](https://github.com/MarksMakerSpace/filament-profiles/issues/new?template=feature_request.md&title=💡%20[FEAT]+). 
 
+If you find this site useful and want to help keep it ad-free, please consider supporting us on [Patreon](https://www.patreon.com/marksmakerspace). Your membership will go towards hosting, maintenance and ongoing improvements.
+
 Thank you all and happy printing. 
 
 MMS
