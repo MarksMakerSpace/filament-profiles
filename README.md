@@ -19,7 +19,7 @@ Or if you just have some thoughts you would like to share or discuss, go [here](
 
 ## Tips
 
-If you find this site useful and want to help keep it ad-free, please consider supporting me on [Patreon](https://www.patreon.com/marksmakerspace) or send me a tip on [Ko-Fi](https://ko-fi.com/sirthundercloud). Your membership will go towards hosting, maintenance and ongoing improvements.
+If you find this site useful and want to help keep it ad-free, please consider supporting me on [Patreon](https://www.patreon.com/marksmakerspace) or tip me on [Ko-Fi](https://ko-fi.com/sirthundercloud). Your tip or membership will go towards hosting, maintenance and keeping me motivated for ongoing improvements.
 
 Thank you all and happy printing. 
 
