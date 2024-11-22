@@ -1,8 +1,6 @@
 # 3D Filament Profiles
 
 <https://3dfilamentprofiles.com>  
-<https://3dfilamentprofiles.xyz>  
-<https://filamentprofiles.xyz>
 
 This is the home for the 3D Filament Profiles site. 
 
