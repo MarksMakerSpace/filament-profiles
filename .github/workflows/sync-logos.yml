@@ -18,7 +18,7 @@ jobs:
         with:
           repository: MarksMakerSpace/filament
           ref: develop
-          token: ${{ secrets.MMS_TOKEN }}
+          token: ${{ secrets.FILAMENT_TOKEN }}
           path: filament-private
 
       - name: Sync logo files
