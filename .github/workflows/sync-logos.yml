@@ -1,0 +1,38 @@
+name: Sync Logos to Private Repo
+
+on:
+  push:
+    paths:
+      - 'logos/**'
+
+jobs:
+  sync-logos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout public repo
+        uses: actions/checkout@v4
+
+      - name: Clone private repo
+        uses: actions/checkout@v4
+        with:
+          repository: MarksMakerSpace/filament
+          ref: develop
+          token: ${{ secrets.MMS_TOKEN }}
+          path: filament-private
+
+      - name: Sync logo files
+        run: |
+          rsync -av logos/ filament-private/public/logos/
+      
+      - name: Commit and push if changes
+        run: |
+          cd filament-private
+          git config user.name "Marks Maker Bot"
+          git config user.email "github-actions@marksbot.com"
+          git add public/logos
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync logo files from public repo"
+            git push origin develop
+          else
+            echo "No changes to commit"
+          fi
