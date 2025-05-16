@@ -35,6 +35,10 @@ Use the format: `brandname-web.png`
   * `add:north` → `addnorth-web.png`
   * `Atomic Filament` → `atomic-filament-web.png`
 
+**NOTE:** You can verify the file name by clicking on the brand in the [Brands](https://3dfilamentprofiles.com/brands) page and finding the `brandname` in the URL it takes you to. For example, the URL for Bambu Lab is:
+`https://3dfilamentprofiles.com/defaults/bambu-lab`
+So the `brandname` is `bambu-lab`.
+
 **Specifications:**
 
 * **Width:** 240 px
