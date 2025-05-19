@@ -28,8 +28,8 @@ jobs:
       - name: Commit and push if changes
         run: |
           cd filament-private
-          git config user.name "Marks Maker Bot"
-          git config user.email "github-actions@marksbot.com"
+          git config user.name "MarksMakerSpace Bot"
+          git config user.email "mark@marksmakerspace.com"
           git add public/logos
           if ! git diff --cached --quiet; then
             git commit -m "chore: sync logo files from public repo"
