@@ -57,6 +57,7 @@
     "cr3d",
     "creality",
     "crofil-3d",
+    "cs3d",
     "d3d-sigma",
     "das-filament",
     "devil-design",
@@ -336,6 +337,7 @@
     "spidermaker",
     "voolt3d",
     "wellshow",
-    "yumi"
+    "yumi",
+    "slic3d"
   ]
 }
