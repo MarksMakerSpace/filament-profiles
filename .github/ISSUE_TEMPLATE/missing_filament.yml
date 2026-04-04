@@ -2,7 +2,7 @@ name: Missing filament
 description: Request adding a missing filament profile
 title: "[Missing Filament]: "
 labels:
-  - Missing filament
+  - Missing Filament
 type: task
 body:
   - type: input
