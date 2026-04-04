@@ -1,0 +1,50 @@
+name: Missing filament
+description: Request adding a missing filament profile
+title: "[Missing Filament]: "
+labels:
+  - Missing filament
+body:
+  - type: input
+    id: brand
+    attributes:
+      label: Brand
+      description: Filament brand name.
+      placeholder: eSUN
+    validations:
+      required: true
+
+  - type: input
+    id: material
+    attributes:
+      label: Material
+      description: Base material category.
+      placeholder: PLA
+    validations:
+      required: true
+
+  - type: input
+    id: material_type
+    attributes:
+      label: Material Type
+      description: Specific variant of the material.
+      placeholder: Silk PLA
+    validations:
+      required: true
+
+  - type: input
+    id: color
+    attributes:
+      label: Color
+      description: Filament color name.
+      placeholder: Copper
+    validations:
+      required: true
+
+  - type: input
+    id: filament_page_url
+    attributes:
+      label: Filament Page URL
+      description: Direct URL to the product page so moderators can verify details.
+      placeholder: https://example.com/filament-product-page
+    validations:
+      required: true
