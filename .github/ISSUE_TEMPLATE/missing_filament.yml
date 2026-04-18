@@ -49,3 +49,12 @@ body:
       placeholder: https://example.com/filament-product-page
     validations:
       required: true
+
+  - type: textarea
+    id: comment
+    attributes:
+      label: Comment
+      description: Any extra details that would help moderators verify or add the filament.
+      placeholder: Add any notes, corrections, or context here.
+    validations:
+      required: false
