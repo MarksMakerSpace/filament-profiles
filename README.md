@@ -4,8 +4,6 @@
 
 This is the home for the 3D Filament Profiles site. 
 
-This site is intended to be a community resource to share 3D Filament profile information and to help out the 3D community. 
-
 ## Bugs
 
 Please report any bugs [here](https://github.com/MarksMakerSpace/filament-profiles/issues/new?template=bug_report.md&title=🐛+%5BBUG%5D+).
