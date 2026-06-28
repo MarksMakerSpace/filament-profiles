@@ -1,0 +1,95 @@
+name: Filament Data Correction
+description: Report incorrect, missing, or outdated data on an existing filament profile
+title: "[Data Correction]: "
+labels:
+  - Data Correction
+type: task
+body:
+  - type: input
+    id: filament_url
+    attributes:
+      label: Filament URL or ID
+      description: Link to the filament on 3dfilamentprofiles.com, or just the numeric ID from the URL (e.g. `1234`).
+      placeholder: https://3dfilamentprofiles.com/... or just the ID number
+    validations:
+      required: true
+
+  - type: input
+    id: brand
+    attributes:
+      label: Brand
+      description: Filament brand name.
+      placeholder: eSUN
+    validations:
+      required: true
+
+  - type: input
+    id: material
+    attributes:
+      label: Material
+      description: Base material category.
+      placeholder: PLA
+    validations:
+      required: true
+
+  - type: input
+    id: material_type
+    attributes:
+      label: Material Type
+      description: Specific variant of the material.
+      placeholder: Silk PLA
+    validations:
+      required: true
+
+  - type: input
+    id: color
+    attributes:
+      label: Color
+      description: Filament color name.
+      placeholder: Copper
+    validations:
+      required: true
+
+  - type: input
+    id: field_name
+    attributes:
+      label: Field to Correct
+      description: Which field or piece of data is wrong? (e.g. color name, temp_max, RGB value, AMS compatibility)
+      placeholder: color name
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_value
+    attributes:
+      label: Current (Incorrect) Value
+      description: What does it currently say?
+      placeholder: Coppr
+    validations:
+      required: true
+
+  - type: textarea
+    id: correct_value
+    attributes:
+      label: Correct Value
+      description: What should it say?
+      placeholder: Copper
+    validations:
+      required: true
+
+  - type: input
+    id: filament_page_url
+    attributes:
+      label: Source / Reference URL
+      description: Link to the manufacturer's product page or other source that confirms the correct value.
+      placeholder: https://example.com/filament-product-page
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Anything else that would help us understand or verify the correction.
+    validations:
+      required: false
