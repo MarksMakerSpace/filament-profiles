@@ -1,0 +1,74 @@
+# Copies translation-feedback issues from the PUBLIC repo (where visitors report them)
+# into the PRIVATE repo (where they're actually fixed).
+#
+# Trigger: an issue in this public repo gains the `translation-feedback` label. The
+# in-app issue form auto-applies that label on creation, so this fires for every report.
+#
+# Requirements (see docs README):
+#   - Secret `COPY_TO_PRIVATE_REPO_TOKEN`: a PAT (or GitHub App token) with
+#     `issues: write` on MarksMakerSpace/filament (the private repo).
+#   - A `translation-feedback` label in BOTH repos.
+name: Copy translation feedback to private repo
+
+on:
+  issues:
+    types: [labeled]
+
+# Default GITHUB_TOKEN is used only to read/comment on THIS (public) issue.
+permissions:
+  issues: write
+
+jobs:
+  copy:
+    # Only act on the label we care about, and never on the back-link comment we post.
+    if: github.event.label.name == 'translation-feedback'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip if already copied
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh issue view "$NUMBER" --repo "$REPO" --json comments \
+              --jq '.comments[].body' | grep -q "<!-- copied-to-private -->"; then
+            echo "Already copied; skipping." && echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the copy in the private repo
+        if: steps.guard.outputs.skip != 'true'
+        id: create
+        env:
+          # PAT with issues:write on the private repo.
+          GH_TOKEN: ${{ secrets.COPY_TO_PRIVATE_REPO_TOKEN }}
+          PRIVATE_REPO: MarksMakerSpace/filament
+          # Values via env (never inlined into the script) to avoid shell injection.
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+          SRC_URL: ${{ github.event.issue.html_url }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          {
+            printf '%s\n\n' "$BODY"
+            printf -- '---\n'
+            printf '_Copied from public issue %s (reported by @%s)._\n' "$SRC_URL" "$AUTHOR"
+          } > body.md
+          URL=$(gh issue create --repo "$PRIVATE_REPO" \
+            --title "$TITLE" \
+            --label "translation-feedback" \
+            --body-file body.md)
+          echo "private_url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Back-link the copy on the public issue
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          PRIVATE_URL: ${{ steps.create.outputs.private_url }}
+        run: |
+          # The marker comment both records traceability and prevents re-copying if the
+          # label is removed and re-added later.
+          gh issue comment "$NUMBER" --repo "$REPO" --body \
+            "<!-- copied-to-private --> Thanks! This has been forwarded to our internal tracker for a fix."
