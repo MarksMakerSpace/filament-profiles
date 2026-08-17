@@ -15,6 +15,10 @@ And add any ideas for features you would like to see [here](https://github.com/M
 
 Or if you just have some thoughts you would like to share or discuss, go [here](https://github.com/MarksMakerSpace/filament-profiles/discussions)
 
+## Slicer print logger
+
+A small post-processing script for Bambu Studio, OrcaSlicer and PrusaSlicer that logs each print to your account and subtracts the filament from the right spool. Script, install steps and options are in [`tools/slicer-print-log`](tools/slicer-print-log/).
+
 ## Brand Logos
 
 If you add/find a brand that we do not have logos for, you can submit logos using a Pull Request from the [Pull Requests](https://github.com/MarksMakerSpace/filament-profiles/pulls) page.
