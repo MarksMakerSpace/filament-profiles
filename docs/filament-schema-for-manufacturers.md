@@ -1,18 +1,96 @@
 # Filament Data Submission Guide for Manufacturers
 
-This guide is designed for product managers from filament manufacturers to help you understand the data we need for integration. By providing this data, you enable us to accurately represent your products in our system and ensure a seamless experience for customers.
+This guide is for filament manufacturers who want their products accurately represented on [3D Filament Profiles](https://3dfilamentprofiles.com). It covers the three ways to get your catalog into our database — from fully automated (recommended) to a one-time spreadsheet.
 
-## Why Your Data Matters
+Accurate manufacturer data lets us:
 
-Providing detailed and accurate data about your filament products allows us to:
-- Display your products with the correct specifications and images.
-- Ensure customers can find your products easily.
-- Provide accurate pricing and availability information.
-- Enable optimal printing parameters for your filaments.
+- Display your products with the correct names, colors, and specifications.
+- Show your product pages and images instead of user-submitted approximations.
+- Keep your catalog current automatically — new colors appear the day you launch them.
+- Provide optimal printing parameters for your filaments.
 
-## Data We Need
+If you're going to the trouble of submitting data, also look at our **[Brand Partner Program](https://3dfilamentprofiles.com/partners)** — the free tier gives your team direct, curated control of your listings, a content slot on your brand page, and automatic price/sale tracking from your store.
 
-Below is a list of the data fields we require, along with descriptions and examples to help you map your inventory system data to our schema.
+## Option 1 — You sell on Shopify: nothing to build
+
+If your store runs on Shopify, we can almost certainly ingest it as-is. Our scraper reads the public `/products.json` catalog that every open Shopify storefront exposes, and re-syncs it daily. This is how we ingest Polymaker, ELEGOO, SUNLU, and a dozen other brands.
+
+Email [support@3dfilamentprofiles.com](mailto:support@3dfilamentprofiles.com) with your storefront URL (and the currency/region of each storefront if you run several) and we'll take it from there.
+
+To get the best results from your existing product data:
+
+- Give products a `product_type` of "Filament" (or a `filament` tag) so we can tell filament from printers and accessories.
+- Name your variant options **Color**, **Diameter**, and **Weight** — we resolve them by option *name*, not position.
+- Fill in variant `barcode` with the GTIN/UPC where you have it — it's our highest-confidence way to match your products to entries users have already created.
+
+## Option 2 — No Shopify store: host a product feed on your own site
+
+If your site isn't a store (or isn't on Shopify), you can publish a single JSON document on your own domain — e.g. `https://www.example.com/products.json` — in Shopify's `products.json` format, and we ingest it exactly the same way, re-checking daily. A static file containing your entire catalog is fine; if you later open a Shopify store, nothing changes on our side.
+
+### Feed format
+
+```json
+{
+  "products": [
+    {
+      "id": 101,
+      "title": "PLA Basic",
+      "handle": "pla-basic",
+      "product_type": "Filament",
+      "vendor": "ExampleCo",
+      "tags": "filament, PLA",
+      "body_html": "<p>Optional product description.</p>",
+      "options": [
+        { "name": "Color", "position": 1 },
+        { "name": "Diameter", "position": 2 },
+        { "name": "Weight", "position": 3 }
+      ],
+      "variants": [
+        {
+          "id": 1001,
+          "title": "White / 1.75mm / 1kg",
+          "option1": "White",
+          "option2": "1.75mm",
+          "option3": "1kg",
+          "sku": "EX-PLA-WH-175",
+          "barcode": "123456789012",
+          "price": "19.99",
+          "available": true,
+          "grams": 1000
+        }
+      ],
+      "images": [
+        { "id": 1, "src": "https://www.example.com/images/pla-basic-white.jpg", "variant_ids": [1001] }
+      ]
+    }
+  ]
+}
+```
+
+One `product` per product family (PLA Basic, PLA Matte, PETG…), one `variant` per color/diameter/weight combination.
+
+### Field notes
+
+| Field | Notes |
+| --- | --- |
+| `title` | Product family name. Avoid "sample", "swatch", "bundle" in filament titles — those patterns are auto-excluded. |
+| `handle` | URL slug. We link users to `<your-domain>/products/<handle>` — make sure that URL exists (or tell us your URL pattern). |
+| `product_type` / `tags` | At least one of these should identify the product as filament. |
+| `options[].name` | We recognize **Color** (also Colour/Farbe), **Diameter**/Size (values must contain "mm", e.g. "1.75mm"), **Weight** (also Net Weight/Gewicht). Each option needs its `position` (1–3) matching the variant's `option1`–`option3`. |
+| `variants[].id` | Any unique number, but keep it **stable across feed updates** — it's how we track a variant over time. Don't renumber. |
+| `variants[].sku` | Your internal SKU. Used for matching and display. |
+| `variants[].barcode` | GTIN/UPC (12–14 digits). The strongest matching signal we have — fill it in if you possibly can. |
+| `variants[].price` | Optional. Decimal string in a single, consistent currency — tell us which one. Omit if you don't sell retail yet. |
+| `variants[].available` | Stock status; lets us show availability. |
+| `images[]` | Optional. `variant_ids` maps an image to specific variants (e.g. a per-color photo). |
+
+Email us the feed URL once it's live and we'll add you to the daily sync.
+
+## Option 3 — One-time spreadsheet submission
+
+If a feed isn't practical yet, we accept a CSV or Excel workbook for a one-time import. Be aware it goes stale the moment you launch a new color — we'd encourage pairing it with Option 1 or 2 for ongoing updates.
+
+Below are the fields we can ingest, along with descriptions and examples to help you map your inventory system's columns to our schema.
 
 ### Required Fields
 
@@ -31,6 +109,8 @@ Below is a list of the data fields we require, along with descriptions and examp
 | `upc`           | GTIN/UPC code for the filament                                                        | "123456789012"                            |
 
 \* _The `material` and `material_type` fields are essential for categorizing your filament products accurately. Please ensure they are filled out correctly. The list of options can be found on our [Materials Page](https://3dfilamentprofiles.com/materials)._
+
+_Don't have some of these yet (per-product URLs, images, prices, UPCs)? Send what you have — names, materials, SKUs, and colors are enough to start, and the rest can be supplemented later._
 
 ### Optional Fields
 
@@ -118,7 +198,7 @@ When specifying build plate compatibility, use these values:
 - `glueMaybe`: Glue Recommended
 - `glueNeeded`: Glue Required
 
-## Mapping Your Data
+### Mapping Your Data
 
 Here's how you can map your inventory system data to our schema:
 
@@ -141,9 +221,12 @@ Here's how you can map your inventory system data to our schema:
 | Spool Weight           | `nominal_weight`          | Total weight including filament      |
 | Empty Spool Weight     | `spool_weight`            | Weight of empty spool only           |
 
+Note that the temperature, drying, physical, and print-setting fields above are welcome alongside **any** submission path — a feed (Options 1–2) covers the catalog itself, and a one-time spreadsheet of technical specs per product line is a great supplement to it.
+
 ## Submitting Your Data
 
-You can submit your data in structured formats like CSV or Excel. Ensure the column names match the mapping provided above. If you have additional fields not listed here, feel free to include them, and we will review their relevance.
+- **Feed (Options 1–2):** email your storefront or feed URL to [support@3dfilamentprofiles.com](mailto:support@3dfilamentprofiles.com).
+- **Spreadsheet (Option 3):** email the CSV/Excel file to the same address, with column names matching the mapping above. Extra columns are fine — we'll review their relevance.
 
 ## Need Help?
 
