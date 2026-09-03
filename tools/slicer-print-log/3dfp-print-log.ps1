@@ -12,14 +12,13 @@ Install (Bambu Studio / OrcaSlicer / PrusaSlicer and other PrusaSlicer forks):
     "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "C:\path\to\3dfp-print-log.ps1"
   Options may go after the script path:
     --no-ask         skip the "Log this print?" dialog and open the browser straight away
-    --base-url URL   send to a different site (dev/staging)
     --dry-run        print the URL instead of opening the browser
     --debug          write argv/env/gcode header to ~\3dfp-print-log-debug.txt
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
 what the slice actually used (grams, which slots, print time), and opens
-your browser at <site>/my/print/log with that data in the URL. Sign in there
+your browser at https://3dfilamentprofiles.com/my/print/log with that data in the URL. Sign in there
 once and pick which spool each filament came from; the site does the actual
 parsing and math. In Bambu Studio it also picks up the real project (3MF)
 name and, on re-slices, the plate.
