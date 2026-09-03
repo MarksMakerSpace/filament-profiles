@@ -8,19 +8,37 @@ Help page with screenshots: <https://3dfilamentprofiles.com/help/automatic-print
 
 ## What it needs
 
-- Python 3 (3.8 or newer). Windows: [python.org](https://www.python.org/downloads/) or the Microsoft Store. macOS: `python3` in a terminal will offer to install it. Linux: you already have it.
-- No extra packages. The script only uses the standard library.
+Two versions of the script do the same thing. Pick one:
+
+- **Windows: `3dfp-print-log.ps1`.** Runs on the PowerShell that is already on every Windows PC. Nothing to install.
+- **macOS, Linux, or Python on Windows: `3dfp-print-log.py`.** Needs Python 3 (3.8 or newer). Windows: [python.org](https://www.python.org/downloads/). macOS: `python3` in a terminal will offer to install it. Linux: you already have it.
+
+No extra packages either way. Both scripts only use what ships with the system.
 
 ## Install
 
-1. Download [`3dfp-print-log.py`](https://raw.githubusercontent.com/MarksMakerSpace/filament-profiles/main/tools/slicer-print-log/3dfp-print-log.py) and put it somewhere permanent (not Downloads).
+1. Download the script and put it somewhere permanent (not Downloads):
+   - Windows: [`3dfp-print-log.ps1`](https://raw.githubusercontent.com/MarksMakerSpace/filament-profiles/main/tools/slicer-print-log/3dfp-print-log.ps1)
+   - macOS / Linux / Python on Windows: [`3dfp-print-log.py`](https://raw.githubusercontent.com/MarksMakerSpace/filament-profiles/main/tools/slicer-print-log/3dfp-print-log.py)
 2. In your slicer, open the print settings and find the post-processing scripts box:
    - Bambu Studio / OrcaSlicer: Print Settings, Others, Post-processing scripts
    - PrusaSlicer: Print Settings, Output options, Post-processing scripts
-3. Add one line, quoting both paths:
+3. Add one line, quoting both paths.
+
+   Windows (PowerShell). This path is the same on every Windows install:
 
    ```
-   "C:\Users\you\AppData\Local\Programs\Python\Python312\python.exe" "C:\Users\you\3dfp\3dfp-print-log.py"
+   "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "C:\Users\you\3dfp\3dfp-print-log.ps1"
+   ```
+
+   Windows (Python). The slicer needs the real `python.exe`. Plain `py` or `python` will not work here: since Python 3.11 the `py` launcher is an app alias, not a file. The folder name changes with each Python version, so get the exact path by running this in a terminal and paste what it prints:
+
+   ```
+   py -c "import sys; print(sys.executable)"
+   ```
+
+   ```
+   "C:\Users\you\AppData\Local\Python\pythoncore-3.14-64\python.exe" "C:\Users\you\3dfp\3dfp-print-log.py"
    ```
 
    macOS / Linux:
@@ -29,13 +47,13 @@ Help page with screenshots: <https://3dfilamentprofiles.com/help/automatic-print
    "/usr/bin/python3" "/Users/you/3dfp/3dfp-print-log.py"
    ```
 
-   Not sure where Python is? Run `where python` (Windows) or `which python3` (macOS / Linux) in a terminal.
+   Not sure where Python is on macOS or Linux? Run `which python3` in a terminal.
 
 4. Slice a plate. A small dialog asks whether to log it. Click Log it and your browser opens. If you're not signed in it asks you to log in first, then brings you straight back.
 
 ## Options
 
-Options go before the script's own arguments on the same line, for example `"python3" "3dfp-print-log.py" --no-ask`.
+Options go after the script path on the same line, for example `"python3" "3dfp-print-log.py" --no-ask` or `... -File "3dfp-print-log.ps1" --no-ask`. Both scripts take the same options.
 
 | Option | What it does |
 | --- | --- |
