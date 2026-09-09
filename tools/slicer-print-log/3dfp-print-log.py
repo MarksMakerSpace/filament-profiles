@@ -2,6 +2,7 @@
 """
 3D Filament Profiles - automatic print logging post-processing script.
 https://3dfilamentprofiles.com/help/automatic-print-logging
+Source, README and issues: https://github.com/MarksMakerSpace/filament-profiles/tree/main/tools/slicer-print-log
 
 Install (Bambu Studio / OrcaSlicer / PrusaSlicer and other PrusaSlicer forks):
   Print Settings -> Others -> Post-processing scripts (PrusaSlicer: Print
@@ -18,7 +19,9 @@ so the script asks "Log this print?" first (native dialog, no extra install);
 Skip and nothing happens. Pass --no-ask to always open the browser instead.
 Older Bambu Studio versions only ran them on File -> Export -> Export G-code
 (bambulab/BambuStudio#3006). OrcaSlicer runs them on export; if yours doesn't
-run them on Send, use Export G-code.
+run them on Send, use Export G-code. Anycubic Slicer NEXT runs the script
+several times for one slice, so a slice that builds the same URL as one seen
+in the last DEDUPE_WINDOW_SECONDS is ignored (filament-profiles#644).
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
@@ -45,7 +48,7 @@ import sys
 import webbrowser
 from urllib.parse import quote
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 DEFAULT_BASE_URL = "https://3dfilamentprofiles.com"
 
@@ -248,6 +251,43 @@ def build_url(base_url: str, gcode_path: str) -> tuple[str | None, str]:
 
 
 DIALOG_TIMEOUT_SECONDS = 60
+# Longer than the dialog timeout: a slicer that runs the script again only after the
+# first run's dialog closes still lands inside the window.
+DEDUPE_WINDOW_SECONDS = 120
+
+
+def already_handled(url: str) -> bool:
+    """
+    True when this exact URL was already handled within DEDUPE_WINDOW_SECONDS. Some
+    slicers (Anycubic Slicer NEXT) run post-processing scripts several times for one
+    slice; keying on the URL rather than the gcode path catches that whatever temp file
+    each run is handed. A marker file per URL in the temp folder, created atomically,
+    lets exactly one run through even when the runs overlap. Any file-system trouble
+    means "not handled", so the worst case is the old behaviour: an extra dialog.
+    """
+    import glob
+    import hashlib
+    import tempfile
+    import time
+
+    try:
+        temp_dir = tempfile.gettempdir()
+        now = time.time()
+        for stale in glob.glob(os.path.join(temp_dir, "3dfp-print-log-*.seen")):
+            try:
+                if now - os.path.getmtime(stale) > DEDUPE_WINDOW_SECONDS:
+                    os.remove(stale)
+            except OSError:
+                pass
+        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+        marker = os.path.join(temp_dir, f"3dfp-print-log-{digest}.seen")
+        try:
+            os.close(os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return False
+        except FileExistsError:
+            return True
+    except OSError:
+        return False
 
 
 def ask_user(summary: str) -> bool:
@@ -383,6 +423,10 @@ def main(argv: list[str]) -> int:
 
     if dry_run:
         print(url)
+        return 0
+
+    if already_handled(url):
+        print("3dfp-print-log: this print was already handled a moment ago, skipping.", file=sys.stderr)
         return 0
 
     if ask and not ask_user(summary):

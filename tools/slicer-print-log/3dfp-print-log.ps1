@@ -12,13 +12,14 @@ Install (Bambu Studio / OrcaSlicer / PrusaSlicer and other PrusaSlicer forks):
     "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "C:\path\to\3dfp-print-log.ps1"
   Options may go after the script path:
     --no-ask         skip the "Log this print?" dialog and open the browser straight away
+    --base-url URL   send to a different site (dev/staging)
     --dry-run        print the URL instead of opening the browser
     --debug          write argv/env/gcode header to ~\3dfp-print-log-debug.txt
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
 what the slice actually used (grams, which slots, print time), and opens
-your browser at https://3dfilamentprofiles.com/my/print/log with that data in the URL. Sign in there
+your browser at <site>/my/print/log with that data in the URL. Sign in there
 once and pick which spool each filament came from; the site does the actual
 parsing and math. In Bambu Studio it also picks up the real project (3MF)
 name and, on re-slices, the plate.
@@ -33,7 +34,7 @@ break your slicer's export. Works on Windows PowerShell 5.1 and PowerShell 7.
 
 $ErrorActionPreference = "Continue"
 
-$Version = "1.0.0"
+$Version = "1.1.0"
 $DefaultBaseUrl = "https://3dfilamentprofiles.com"
 
 # Kept in sync with 3dfp-print-log.py and the regexes in
@@ -71,6 +72,9 @@ $EnvConfigKeys = @(
 $MaxLineLength = 400
 $MaxPayloadBytes = 16 * 1024
 $DialogTimeoutSeconds = 60
+# Longer than the dialog timeout: a slicer that runs the script again only after the
+# first run's dialog closes still lands inside the window.
+$DedupeWindowSeconds = 120
 
 function Write-Stderr([string] $Message) {
   [Console]::Error.WriteLine("3dfp-print-log: $Message")
@@ -239,6 +243,41 @@ function Build-Url([string] $BaseUrl, [string] $GcodePath) {
   return @(($BaseUrl.TrimEnd("/") + "/my/print/log?$query"), $summary)
 }
 
+function Test-AlreadyHandled([string] $Url) {
+  # True when this exact URL was already handled within $DedupeWindowSeconds. Some slicers
+  # (Anycubic Slicer NEXT) run post-processing scripts several times for one slice; keying
+  # on the URL rather than the gcode path catches that whatever temp file each run is handed.
+  # A marker file per URL in the temp folder, created atomically, lets exactly one run
+  # through even when the runs overlap. Any file-system trouble means "not handled", so the
+  # worst case is the old behaviour: an extra dialog.
+  try {
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $now = Get-Date
+    foreach ($stale in Get-ChildItem -Path $tempDir -Filter "3dfp-print-log-*.seen" -File -ErrorAction SilentlyContinue) {
+      if (($now - $stale.LastWriteTime).TotalSeconds -gt $DedupeWindowSeconds) {
+        Remove-Item -LiteralPath $stale.FullName -Force -ErrorAction SilentlyContinue
+      }
+    }
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    try {
+      $hash = $sha1.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Url))
+    } finally {
+      $sha1.Dispose()
+    }
+    $digest = ([System.BitConverter]::ToString($hash) -replace "-", "").Substring(0, 16).ToLowerInvariant()
+    $marker = Join-Path $tempDir "3dfp-print-log-$digest.seen"
+    try {
+      # CreateNew fails when the file exists, so overlapping runs cannot both win.
+      ([System.IO.File]::Open($marker, [System.IO.FileMode]::CreateNew)).Dispose()
+      return $false
+    } catch {
+      return [System.IO.File]::Exists($marker)
+    }
+  } catch {
+    return $false
+  }
+}
+
 function Confirm-Log([string] $Summary) {
   # Native yes/no dialog with a timeout, no extra assemblies. Timeout or any failure counts
   # as "yes" so an unattended slice still opens a tab instead of silently dropping the print.
@@ -339,6 +378,11 @@ function Main([string[]] $Argv) {
 
   if ($dryRun) {
     [Console]::Out.WriteLine($url)
+    return
+  }
+
+  if (Test-AlreadyHandled $url) {
+    Write-Stderr "this print was already handled a moment ago, skipping."
     return
   }
 
