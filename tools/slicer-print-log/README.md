@@ -68,6 +68,7 @@ Options go after the script path on the same line, for example `"python3" "3dfp-
 - **Older Bambu Studio** only ran them on File, Export, Export G-code, not on Send or on the sliced .3mf export.
 - **OrcaSlicer** runs them on export; some versions don't run them on Send. If nothing happens on Send, use Export G-code.
 - **PrusaSlicer** runs them on export.
+- **Anycubic Slicer NEXT** runs them several times for one slice. The script notices and only asks once: a repeat run that builds the same URL within ten seconds of the previous one finishing is skipped.
 
 ## What gets sent
 
