@@ -20,8 +20,8 @@ Skip and nothing happens. Pass --no-ask to always open the browser instead.
 Older Bambu Studio versions only ran them on File -> Export -> Export G-code
 (bambulab/BambuStudio#3006). OrcaSlicer runs them on export; if yours doesn't
 run them on Send, use Export G-code. Anycubic Slicer NEXT runs the script
-several times for one slice, so a slice that builds the same URL as one seen
-in the last DEDUPE_WINDOW_SECONDS is ignored (filament-profiles#644).
+several times for one slice, so a run that builds the same URL as one that
+finished less than DEDUPE_WINDOW_SECONDS ago is ignored (filament-profiles#644).
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
@@ -251,19 +251,21 @@ def build_url(base_url: str, gcode_path: str) -> tuple[str | None, str]:
 
 
 DIALOG_TIMEOUT_SECONDS = 60
-# Longer than the dialog timeout: a slicer that runs the script again only after the
-# first run's dialog closes still lands inside the window.
-DEDUPE_WINDOW_SECONDS = 120
+# Measured from the end of the previous run (see claim_marker), so it only has to cover
+# the gap between one run finishing and the slicer starting the next.
+DEDUPE_WINDOW_SECONDS = 10
 
 
-def already_handled(url: str) -> bool:
+def claim_marker(url: str) -> str | None:
     """
-    True when this exact URL was already handled within DEDUPE_WINDOW_SECONDS. Some
-    slicers (Anycubic Slicer NEXT) run post-processing scripts several times for one
-    slice; keying on the URL rather than the gcode path catches that whatever temp file
-    each run is handed. A marker file per URL in the temp folder, created atomically,
-    lets exactly one run through even when the runs overlap. Any file-system trouble
-    means "not handled", so the worst case is the old behaviour: an extra dialog.
+    Some slicers (Anycubic Slicer NEXT) run post-processing scripts several times for
+    one slice. A marker file per URL in the temp folder catches that whatever temp gcode
+    each run is handed: this returns None when a marker younger than DEDUPE_WINDOW_SECONDS
+    exists, otherwise the marker path (or "" when the temp folder is unusable, so the
+    worst case is the old behaviour: an extra dialog). The marker is created atomically,
+    so exactly one of several overlapping runs wins, and the caller refreshes it via
+    touch_marker when it is done, so a slicer that starts the next run only after the
+    first run's dialog closes still lands inside the window however long that took.
     """
     import glob
     import hashlib
@@ -283,11 +285,21 @@ def already_handled(url: str) -> bool:
         marker = os.path.join(temp_dir, f"3dfp-print-log-{digest}.seen")
         try:
             os.close(os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-            return False
+            return marker
         except FileExistsError:
-            return True
+            return None
     except OSError:
-        return False
+        return ""
+
+
+def touch_marker(marker: str) -> None:
+    """Restarts the dedupe window from now, once the dialog and browser hand-off are done."""
+    if not marker:
+        return
+    try:
+        os.utime(marker, None)
+    except OSError:
+        pass
 
 
 def ask_user(summary: str) -> bool:
@@ -425,17 +437,21 @@ def main(argv: list[str]) -> int:
         print(url)
         return 0
 
-    if already_handled(url):
+    marker = claim_marker(url)
+    if marker is None:
         print("3dfp-print-log: this print was already handled a moment ago, skipping.", file=sys.stderr)
         return 0
 
-    if ask and not ask_user(summary):
-        return 0
-
     try:
-        webbrowser.open(url)
-    except Exception as err:  # never let a browser-launch failure break the slicer's export
-        print(f"3dfp-print-log: could not open browser: {err}", file=sys.stderr)
+        if ask and not ask_user(summary):
+            return 0
+
+        try:
+            webbrowser.open(url)
+        except Exception as err:  # never let a browser-launch failure break the slicer's export
+            print(f"3dfp-print-log: could not open browser: {err}", file=sys.stderr)
+    finally:
+        touch_marker(marker)
 
     return 0
 

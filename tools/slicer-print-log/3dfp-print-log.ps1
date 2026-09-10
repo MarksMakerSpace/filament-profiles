@@ -72,9 +72,9 @@ $EnvConfigKeys = @(
 $MaxLineLength = 400
 $MaxPayloadBytes = 16 * 1024
 $DialogTimeoutSeconds = 60
-# Longer than the dialog timeout: a slicer that runs the script again only after the
-# first run's dialog closes still lands inside the window.
-$DedupeWindowSeconds = 120
+# Measured from the end of the previous run (see Get-ClaimedMarker), so it only has to
+# cover the gap between one run finishing and the slicer starting the next.
+$DedupeWindowSeconds = 10
 
 function Write-Stderr([string] $Message) {
   [Console]::Error.WriteLine("3dfp-print-log: $Message")
@@ -243,13 +243,15 @@ function Build-Url([string] $BaseUrl, [string] $GcodePath) {
   return @(($BaseUrl.TrimEnd("/") + "/my/print/log?$query"), $summary)
 }
 
-function Test-AlreadyHandled([string] $Url) {
-  # True when this exact URL was already handled within $DedupeWindowSeconds. Some slicers
-  # (Anycubic Slicer NEXT) run post-processing scripts several times for one slice; keying
-  # on the URL rather than the gcode path catches that whatever temp file each run is handed.
-  # A marker file per URL in the temp folder, created atomically, lets exactly one run
-  # through even when the runs overlap. Any file-system trouble means "not handled", so the
-  # worst case is the old behaviour: an extra dialog.
+function Get-ClaimedMarker([string] $Url) {
+  # Some slicers (Anycubic Slicer NEXT) run post-processing scripts several times for one
+  # slice. A marker file per URL in the temp folder catches that whatever temp gcode each
+  # run is handed: returns $null when a marker younger than $DedupeWindowSeconds exists,
+  # otherwise the marker path (or "" when the temp folder is unusable, so the worst case is
+  # the old behaviour: an extra dialog). The marker is created atomically, so exactly one of
+  # several overlapping runs wins, and Main refreshes it via Update-Marker when done, so a
+  # slicer that starts the next run only after the first run's dialog closes still lands
+  # inside the window however long that took.
   try {
     $tempDir = [System.IO.Path]::GetTempPath()
     $now = Get-Date
@@ -269,12 +271,22 @@ function Test-AlreadyHandled([string] $Url) {
     try {
       # CreateNew fails when the file exists, so overlapping runs cannot both win.
       ([System.IO.File]::Open($marker, [System.IO.FileMode]::CreateNew)).Dispose()
-      return $false
+      return $marker
     } catch {
-      return [System.IO.File]::Exists($marker)
+      if ([System.IO.File]::Exists($marker)) { return $null }
+      return ""
     }
   } catch {
-    return $false
+    return ""
+  }
+}
+
+function Update-Marker([string] $Marker) {
+  # Restarts the dedupe window from now, once the dialog and browser hand-off are done.
+  if (-not $Marker) { return }
+  try {
+    [System.IO.File]::SetLastWriteTime($Marker, (Get-Date))
+  } catch {
   }
 }
 
@@ -381,17 +393,22 @@ function Main([string[]] $Argv) {
     return
   }
 
-  if (Test-AlreadyHandled $url) {
+  $marker = Get-ClaimedMarker $url
+  if ($null -eq $marker) {
     Write-Stderr "this print was already handled a moment ago, skipping."
     return
   }
 
-  if ($ask -and -not (Confirm-Log $summary)) { return }
-
   try {
-    Start-Process $url
-  } catch {
-    Write-Stderr "could not open browser: $($_.Exception.Message)"
+    if ($ask -and -not (Confirm-Log $summary)) { return }
+
+    try {
+      Start-Process $url
+    } catch {
+      Write-Stderr "could not open browser: $($_.Exception.Message)"
+    }
+  } finally {
+    Update-Marker $marker
   }
 }
 
