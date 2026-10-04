@@ -5,8 +5,9 @@
 # in-app issue form auto-applies that label on creation, so this fires for every report.
 #
 # Requirements (see docs README):
-#   - Secret `COPY_TO_PRIVATE_REPO_TOKEN`: a PAT (or GitHub App token) with
-#     `issues: write` on MarksMakerSpace/filament (the private repo).
+#   - Secret `COPY_TO_PRIVATE_REPO_TOKEN` saved on THIS repository (the workflow runs here,
+#     so a secret saved on the private repo is not visible to it): a PAT (or GitHub App
+#     token) with `issues: write` on MarksMakerSpace/filament (the private repo).
 #   - A `translation-feedback` label in BOTH repos.
 name: Copy translation feedback to private repo
 
@@ -47,12 +48,15 @@ jobs:
           TITLE: ${{ github.event.issue.title }}
           BODY: ${{ github.event.issue.body }}
           SRC_URL: ${{ github.event.issue.html_url }}
-          AUTHOR: ${{ github.event.issue.user.login }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret COPY_TO_PRIVATE_REPO_TOKEN is not set on this repository."
+            exit 1
+          fi
+          # The copy starts with a `from:` line pointing at the public issue, then the report quoted.
           {
-            printf '%s\n\n' "$BODY"
-            printf -- '---\n'
-            printf '_Copied from public issue %s (reported by @%s)._\n' "$SRC_URL" "$AUTHOR"
+            printf 'from: %s\n\n' "$SRC_URL"
+            printf '%s\n' "$BODY" | sed 's/^/> /'
           } > body.md
           URL=$(gh issue create --repo "$PRIVATE_REPO" \
             --title "$TITLE" \
