@@ -34,7 +34,7 @@ break your slicer's export. Works on Windows PowerShell 5.1 and PowerShell 7.
 
 $ErrorActionPreference = "Continue"
 
-$Version = "1.1.0"
+$Version = "1.1.1"
 $DefaultBaseUrl = "https://3dfilamentprofiles.com"
 
 # Kept in sync with 3dfp-print-log.py and the regexes in
@@ -72,9 +72,16 @@ $EnvConfigKeys = @(
 $MaxLineLength = 400
 $MaxPayloadBytes = 16 * 1024
 $DialogTimeoutSeconds = 60
-# Measured from the end of the previous run (see Get-ClaimedMarker), so it only has to
-# cover the gap between one run finishing and the slicer starting the next.
+# Both windows are measured from the end of the previous run (see Get-ClaimedMarker). The
+# short one only has to cover the gap between one run finishing and the slicer starting the
+# next. Once a run has opened the browser the print is on its way to being logged, so a
+# repeat run for the same slice stays quiet much longer: Anycubic Slicer NEXT fires the
+# script again at "Start print", after the user has mapped filaments and maybe logged the
+# print on the site, which can be minutes later (filament-profiles#653). An identical
+# re-slice inside that window gets no prompt either, which costs little when it was just logged.
 $DedupeWindowSeconds = 10
+$LoggedWindowSeconds = 30 * 60
+$LoggedMark = "logged"
 
 function Write-Stderr([string] $Message) {
   [Console]::Error.WriteLine("3dfp-print-log: $Message")
@@ -243,20 +250,31 @@ function Build-Url([string] $BaseUrl, [string] $GcodePath) {
   return @(($BaseUrl.TrimEnd("/") + "/my/print/log?$query"), $summary)
 }
 
+function Test-MarkerLogged([string] $Marker) {
+  # $true when the run that owned this marker opened the browser (see Complete-Marker).
+  try {
+    return ([System.IO.File]::ReadAllText($Marker)).Trim() -eq $LoggedMark
+  } catch {
+    return $false
+  }
+}
+
 function Get-ClaimedMarker([string] $Url) {
   # Some slicers (Anycubic Slicer NEXT) run post-processing scripts several times for one
   # slice. A marker file per URL in the temp folder catches that whatever temp gcode each
-  # run is handed: returns $null when a marker younger than $DedupeWindowSeconds exists,
+  # run is handed: returns $null when a marker younger than its window exists
+  # ($DedupeWindowSeconds, or $LoggedWindowSeconds when that run opened the browser),
   # otherwise the marker path (or "" when the temp folder is unusable, so the worst case is
   # the old behaviour: an extra dialog). The marker is created atomically, so exactly one of
-  # several overlapping runs wins, and Main refreshes it via Update-Marker when done, so a
+  # several overlapping runs wins, and Main refreshes it via Complete-Marker when done, so a
   # slicer that starts the next run only after the first run's dialog closes still lands
   # inside the window however long that took.
   try {
     $tempDir = [System.IO.Path]::GetTempPath()
     $now = Get-Date
     foreach ($stale in Get-ChildItem -Path $tempDir -Filter "3dfp-print-log-*.seen" -File -ErrorAction SilentlyContinue) {
-      if (($now - $stale.LastWriteTime).TotalSeconds -gt $DedupeWindowSeconds) {
+      $window = if (Test-MarkerLogged $stale.FullName) { $LoggedWindowSeconds } else { $DedupeWindowSeconds }
+      if (($now - $stale.LastWriteTime).TotalSeconds -gt $window) {
         Remove-Item -LiteralPath $stale.FullName -Force -ErrorAction SilentlyContinue
       }
     }
@@ -281,10 +299,12 @@ function Get-ClaimedMarker([string] $Url) {
   }
 }
 
-function Update-Marker([string] $Marker) {
-  # Restarts the dedupe window from now, once the dialog and browser hand-off are done.
+function Complete-Marker([string] $Marker, [bool] $Logged) {
+  # Restarts the dedupe window from now, once the dialog and browser hand-off are done. When
+  # the browser was opened the marker is tagged so Get-ClaimedMarker applies the long window.
   if (-not $Marker) { return }
   try {
+    if ($Logged) { [System.IO.File]::WriteAllText($Marker, $LoggedMark) }
     [System.IO.File]::SetLastWriteTime($Marker, (Get-Date))
   } catch {
   }
@@ -395,20 +415,22 @@ function Main([string[]] $Argv) {
 
   $marker = Get-ClaimedMarker $url
   if ($null -eq $marker) {
-    Write-Stderr "this print was already handled a moment ago, skipping."
+    Write-Stderr "an earlier run already handled this print, skipping."
     return
   }
 
+  $logged = $false
   try {
     if ($ask -and -not (Confirm-Log $summary)) { return }
 
     try {
       Start-Process $url
+      $logged = $true
     } catch {
       Write-Stderr "could not open browser: $($_.Exception.Message)"
     }
   } finally {
-    Update-Marker $marker
+    Complete-Marker $marker $logged
   }
 }
 

@@ -20,8 +20,10 @@ Skip and nothing happens. Pass --no-ask to always open the browser instead.
 Older Bambu Studio versions only ran them on File -> Export -> Export G-code
 (bambulab/BambuStudio#3006). OrcaSlicer runs them on export; if yours doesn't
 run them on Send, use Export G-code. Anycubic Slicer NEXT runs the script
-several times for one slice, so a run that builds the same URL as one that
-finished less than DEDUPE_WINDOW_SECONDS ago is ignored (filament-profiles#644).
+several times for one slice (again at "Start print"), so a run that builds the
+same URL as one that finished less than DEDUPE_WINDOW_SECONDS ago is ignored,
+or LOGGED_WINDOW_SECONDS when that earlier run opened the browser
+(filament-profiles#644, #653).
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
@@ -48,7 +50,7 @@ import sys
 import webbrowser
 from urllib.parse import quote
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 DEFAULT_BASE_URL = "https://3dfilamentprofiles.com"
 
@@ -251,21 +253,38 @@ def build_url(base_url: str, gcode_path: str) -> tuple[str | None, str]:
 
 
 DIALOG_TIMEOUT_SECONDS = 60
-# Measured from the end of the previous run (see claim_marker), so it only has to cover
-# the gap between one run finishing and the slicer starting the next.
+# Both windows are measured from the end of the previous run (see claim_marker). The short
+# one only has to cover the gap between one run finishing and the slicer starting the next.
+# Once a run has opened the browser the print is on its way to being logged, so a repeat
+# run for the same slice stays quiet much longer: Anycubic Slicer NEXT fires the script
+# again at "Start print", after the user has mapped filaments and maybe logged the print
+# on the site, which can be minutes later (filament-profiles#653). An identical re-slice
+# inside that window gets no prompt either, which costs little when it was just logged.
 DEDUPE_WINDOW_SECONDS = 10
+LOGGED_WINDOW_SECONDS = 30 * 60
+LOGGED_MARK = "logged"
+
+
+def marker_is_logged(marker: str) -> bool:
+    """True when the run that owned this marker opened the browser (see finish_marker)."""
+    try:
+        with open(marker, encoding="utf-8") as handle:
+            return handle.read(16).strip() == LOGGED_MARK
+    except OSError:
+        return False
 
 
 def claim_marker(url: str) -> str | None:
     """
     Some slicers (Anycubic Slicer NEXT) run post-processing scripts several times for
     one slice. A marker file per URL in the temp folder catches that whatever temp gcode
-    each run is handed: this returns None when a marker younger than DEDUPE_WINDOW_SECONDS
-    exists, otherwise the marker path (or "" when the temp folder is unusable, so the
-    worst case is the old behaviour: an extra dialog). The marker is created atomically,
-    so exactly one of several overlapping runs wins, and the caller refreshes it via
-    touch_marker when it is done, so a slicer that starts the next run only after the
-    first run's dialog closes still lands inside the window however long that took.
+    each run is handed: this returns None when a marker younger than its window exists
+    (DEDUPE_WINDOW_SECONDS, or LOGGED_WINDOW_SECONDS when that run opened the browser),
+    otherwise the marker path (or "" when the temp folder is unusable, so the worst case
+    is the old behaviour: an extra dialog). The marker is created atomically, so exactly
+    one of several overlapping runs wins, and the caller refreshes it via finish_marker
+    when it is done, so a slicer that starts the next run only after the first run's
+    dialog closes still lands inside the window however long that took.
     """
     import glob
     import hashlib
@@ -277,7 +296,8 @@ def claim_marker(url: str) -> str | None:
         now = time.time()
         for stale in glob.glob(os.path.join(temp_dir, "3dfp-print-log-*.seen")):
             try:
-                if now - os.path.getmtime(stale) > DEDUPE_WINDOW_SECONDS:
+                window = LOGGED_WINDOW_SECONDS if marker_is_logged(stale) else DEDUPE_WINDOW_SECONDS
+                if now - os.path.getmtime(stale) > window:
                     os.remove(stale)
             except OSError:
                 pass
@@ -292,11 +312,17 @@ def claim_marker(url: str) -> str | None:
         return ""
 
 
-def touch_marker(marker: str) -> None:
-    """Restarts the dedupe window from now, once the dialog and browser hand-off are done."""
+def finish_marker(marker: str, logged: bool) -> None:
+    """
+    Restarts the dedupe window from now, once the dialog and browser hand-off are done.
+    When the browser was opened the marker is tagged so claim_marker applies the long window.
+    """
     if not marker:
         return
     try:
+        if logged:
+            with open(marker, "w", encoding="utf-8") as handle:
+                handle.write(LOGGED_MARK)
         os.utime(marker, None)
     except OSError:
         pass
@@ -439,19 +465,21 @@ def main(argv: list[str]) -> int:
 
     marker = claim_marker(url)
     if marker is None:
-        print("3dfp-print-log: this print was already handled a moment ago, skipping.", file=sys.stderr)
+        print("3dfp-print-log: an earlier run already handled this print, skipping.", file=sys.stderr)
         return 0
 
+    logged = False
     try:
         if ask and not ask_user(summary):
             return 0
 
         try:
             webbrowser.open(url)
+            logged = True
         except Exception as err:  # never let a browser-launch failure break the slicer's export
             print(f"3dfp-print-log: could not open browser: {err}", file=sys.stderr)
     finally:
-        touch_marker(marker)
+        finish_marker(marker, logged)
 
     return 0
 
