@@ -12,13 +12,14 @@ Install (Bambu Studio / OrcaSlicer / PrusaSlicer and other PrusaSlicer forks):
     "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "C:\path\to\3dfp-print-log.ps1"
   Options may go after the script path:
     --no-ask         skip the "Log this print?" dialog and open the browser straight away
+    --base-url URL   send to a different site (dev/staging)
     --dry-run        print the URL instead of opening the browser
     --debug          write argv/env/gcode header to ~\3dfp-print-log-debug.txt
 
 What it does: takes the filament type/vendor/colour and printer from the
 SLIC3R_* environment variables the slicer sets, reads the .gcode header for
 what the slice actually used (grams, which slots, print time), and opens
-your browser at https://3dfilamentprofiles.com/my/print/log with that data in the URL. Sign in there
+your browser at <site>/my/print/log with that data in the URL. Sign in there
 once and pick which spool each filament came from; the site does the actual
 parsing and math. In Bambu Studio it also picks up the real project (3MF)
 name and, on re-slices, the plate.
@@ -33,7 +34,7 @@ break your slicer's export. Works on Windows PowerShell 5.1 and PowerShell 7.
 
 $ErrorActionPreference = "Continue"
 
-$Version = "1.0.0"
+$Version = "1.1.1"
 $DefaultBaseUrl = "https://3dfilamentprofiles.com"
 
 # Kept in sync with 3dfp-print-log.py and the regexes in
@@ -71,6 +72,16 @@ $EnvConfigKeys = @(
 $MaxLineLength = 400
 $MaxPayloadBytes = 16 * 1024
 $DialogTimeoutSeconds = 60
+# Both windows are measured from the end of the previous run (see Get-ClaimedMarker). The
+# short one only has to cover the gap between one run finishing and the slicer starting the
+# next. Once a run has opened the browser the print is on its way to being logged, so a
+# repeat run for the same slice stays quiet much longer: Anycubic Slicer NEXT fires the
+# script again at "Start print", after the user has mapped filaments and maybe logged the
+# print on the site, which can be minutes later (filament-profiles#653). An identical
+# re-slice inside that window gets no prompt either, which costs little when it was just logged.
+$DedupeWindowSeconds = 10
+$LoggedWindowSeconds = 30 * 60
+$LoggedMark = "logged"
 
 function Write-Stderr([string] $Message) {
   [Console]::Error.WriteLine("3dfp-print-log: $Message")
@@ -239,6 +250,66 @@ function Build-Url([string] $BaseUrl, [string] $GcodePath) {
   return @(($BaseUrl.TrimEnd("/") + "/my/print/log?$query"), $summary)
 }
 
+function Test-MarkerLogged([string] $Marker) {
+  # $true when the run that owned this marker opened the browser (see Complete-Marker).
+  try {
+    return ([System.IO.File]::ReadAllText($Marker)).Trim() -eq $LoggedMark
+  } catch {
+    return $false
+  }
+}
+
+function Get-ClaimedMarker([string] $Url) {
+  # Some slicers (Anycubic Slicer NEXT) run post-processing scripts several times for one
+  # slice. A marker file per URL in the temp folder catches that whatever temp gcode each
+  # run is handed: returns $null when a marker younger than its window exists
+  # ($DedupeWindowSeconds, or $LoggedWindowSeconds when that run opened the browser),
+  # otherwise the marker path (or "" when the temp folder is unusable, so the worst case is
+  # the old behaviour: an extra dialog). The marker is created atomically, so exactly one of
+  # several overlapping runs wins, and Main refreshes it via Complete-Marker when done, so a
+  # slicer that starts the next run only after the first run's dialog closes still lands
+  # inside the window however long that took.
+  try {
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $now = Get-Date
+    foreach ($stale in Get-ChildItem -Path $tempDir -Filter "3dfp-print-log-*.seen" -File -ErrorAction SilentlyContinue) {
+      $window = if (Test-MarkerLogged $stale.FullName) { $LoggedWindowSeconds } else { $DedupeWindowSeconds }
+      if (($now - $stale.LastWriteTime).TotalSeconds -gt $window) {
+        Remove-Item -LiteralPath $stale.FullName -Force -ErrorAction SilentlyContinue
+      }
+    }
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    try {
+      $hash = $sha1.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Url))
+    } finally {
+      $sha1.Dispose()
+    }
+    $digest = ([System.BitConverter]::ToString($hash) -replace "-", "").Substring(0, 16).ToLowerInvariant()
+    $marker = Join-Path $tempDir "3dfp-print-log-$digest.seen"
+    try {
+      # CreateNew fails when the file exists, so overlapping runs cannot both win.
+      ([System.IO.File]::Open($marker, [System.IO.FileMode]::CreateNew)).Dispose()
+      return $marker
+    } catch {
+      if ([System.IO.File]::Exists($marker)) { return $null }
+      return ""
+    }
+  } catch {
+    return ""
+  }
+}
+
+function Complete-Marker([string] $Marker, [bool] $Logged) {
+  # Restarts the dedupe window from now, once the dialog and browser hand-off are done. When
+  # the browser was opened the marker is tagged so Get-ClaimedMarker applies the long window.
+  if (-not $Marker) { return }
+  try {
+    if ($Logged) { [System.IO.File]::WriteAllText($Marker, $LoggedMark) }
+    [System.IO.File]::SetLastWriteTime($Marker, (Get-Date))
+  } catch {
+  }
+}
+
 function Confirm-Log([string] $Summary) {
   # Native yes/no dialog with a timeout, no extra assemblies. Timeout or any failure counts
   # as "yes" so an unattended slice still opens a tab instead of silently dropping the print.
@@ -342,12 +413,24 @@ function Main([string[]] $Argv) {
     return
   }
 
-  if ($ask -and -not (Confirm-Log $summary)) { return }
+  $marker = Get-ClaimedMarker $url
+  if ($null -eq $marker) {
+    Write-Stderr "an earlier run already handled this print, skipping."
+    return
+  }
 
+  $logged = $false
   try {
-    Start-Process $url
-  } catch {
-    Write-Stderr "could not open browser: $($_.Exception.Message)"
+    if ($ask -and -not (Confirm-Log $summary)) { return }
+
+    try {
+      Start-Process $url
+      $logged = $true
+    } catch {
+      Write-Stderr "could not open browser: $($_.Exception.Message)"
+    }
+  } finally {
+    Complete-Marker $marker $logged
   }
 }
 
